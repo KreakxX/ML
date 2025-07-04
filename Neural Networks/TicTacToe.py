@@ -6,6 +6,7 @@ import copy
 import random
 
 spielFeld = [[0 for _ in range(3)] for _ in range(3)]
+
 model = keras.Sequential([              # basic neural network
     keras.Input(shape=(9,)),
     layers.Dense(128, activation="relu"),
