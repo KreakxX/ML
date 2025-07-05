@@ -4,6 +4,7 @@ from keras import  Model, layers
 import pygame
 import random
 import sys
+import matplotlib.pyplot as plt
 
 
 # Prediction Logik auf die Fehler, Q-State learning mit Reward based
@@ -14,14 +15,16 @@ import sys
 
 
 
-model = keras.Sequential([              
-    keras.Input(shape=(11,)),
-    layers.Dense(128, activation="relu"),
-    layers.Dense(128, activation="relu"),
-    layers.Dense(3, activation="linear")
-])
+# model = keras.Sequential([              
+#     keras.Input(shape=(11,)),
+#     layers.Dense(128, activation="relu"),
+#     layers.Dense(128, activation="relu"),
+#     layers.Dense(3, activation="linear")
+# ])
 
-model.compile(optimizer='adam', loss='mse')
+# model.compile(optimizer='adam', loss='mse')
+
+model = keras.models.load_model("Snake.keras")
 
 snake = []
 direction_idx = 0
@@ -44,14 +47,14 @@ RED = (255, 0, 0)
 
 
 def train_q_state_learning(state,action,reward,next_state,alpha=0.1, gamma=0.9):
-    state = np.array(state).reshape(1,-1)
-    next_state = np.array(next_state).reshape(1,-1)
+    state = np.array(state).reshape(1,-1) # transforms the state list like  state =[] into a numpy array which is important for the model, reshaping to 1 row with multiple cols like like 1 [] and -1 says calculate them based on the input array([[0, 1, 0, 0, 1, 1]])
+    next_state = np.array(next_state).reshape(1,-1)   # same goes for here
 
-    q_values = model.predict(state,verbose=0)
-    next_q_values = model.predict(next_state,verbose=0)
+    q_values = model.predict(state,verbose=0) # predicting the q_values base on the state like an Array with the all the best options highest better
+    next_q_values = model.predict(next_state,verbose=0) # same goes for here verbose = no progress shown in terminal (cosmetic)
 
-    target = q_values.copy()
-    target[0][action] = reward + gamma * np.max(next_q_values)
+    target = q_values.copy()  # makes a copy of the q_values is position 0 then
+    target[0][action] = reward + gamma * np.max(next_q_values)  # the Q-Learning formula np.max next best move
 
     model.fit(state, target, epochs=1, verbose=0)
 
@@ -151,7 +154,7 @@ def move(action):
         return -10
 
     if new_head in snake:
-        dead = True
+        dead = True                 # Mehr bestrafung wenn in sich rein
         return -10
 
     snake.insert(0, new_head)
@@ -193,23 +196,129 @@ def render():
     pygame.display.flip()
     clock.tick(10)
 
-init()
+# init()
 
-for episode in range(1000):
-    reset()
-    while not dead:
-        state = get_state()
-        if random.random() < 0.1:  # epsilon-greedy
-            action = random.randint(0, 2)
-        else:
-            prediction = model.predict(state.reshape(1, -1), verbose=0)
-            action = np.argmax(prediction)
-        reward = move(action)
-        next_state = get_state()            # Performance Optimization wenn zu lange kein Futter minus Reward
-        train_q_state_learning(state, action, reward, next_state)
-        render()
+# for episode in range(250):
+#     reset()
+#     while not dead:
+#         state = get_state()
+#         if random.random() < 0.1:  # epsilon-greedy  # removing after the second time training 
+#             action = random.randint(0, 2)
+#         else:
+#             prediction = model.predict(state.reshape(1, -1), verbose=0)
+#             action = np.argmax(prediction)
+#             reward = move(action)
+#             next_state = get_state()            # Performance Optimization wenn zu lange kein Futter minus Reward
+#             train_q_state_learning(state, action, reward, next_state)
+#         render()
       
-model.save("Snake.keras")
+# model.save("Snake2.keras")
 
 
-pygame.quit()
+# pygame.quit()
+
+
+# Model testing checking which model gets most reward in 50 Episodes
+
+def evaluateModel(model) -> int:
+  if(model == "model1"):
+    model1 = keras.models.load_model("Snake.keras")
+    score = 0
+    totalReward = 0
+    for episode in range(25):
+        reset()
+        while not dead:
+          state = get_state()
+          prediction = model1.predict(state.reshape(1,-1), verbose=0)
+          action = np.argmax(prediction)
+          reward = move(action)
+          totalReward += reward
+          render()
+        
+    score = totalReward / 25
+    return score
+
+  elif(model == "model2"):
+    model2 = keras.models.load_model("Snake2.keras")
+    print("hello")
+    score = 0
+    totalReward = 0
+    for episode in range(25):
+        reset()
+        while not dead:
+          state = get_state()
+          prediction = model2.predict(state.reshape(1,-1), verbose=0)
+          action = np.argmax(prediction)
+          reward = move(action)
+          totalReward += reward
+          render()
+        
+    score = totalReward / 25
+    return score
+          
+
+def comparison():
+  model_names = ['model1', 'model2']
+  avg_rewards = [evaluateModel('model1'), evaluateModel('model2')]
+
+  plt.figure(figsize=(6, 4))
+  plt.bar(model_names, avg_rewards, color=['skyblue', 'lightgreen'])
+  plt.title('Average Reward per Model (50 Games)')
+  plt.ylabel('Average Reward')
+  plt.xlabel('Model')
+  plt.ylim(0, max(avg_rewards) * 1.1)  
+  plt.grid(axis='y', linestyle='--', alpha=0.7)
+  plt.tight_layout()
+  plt.show()
+
+# comparison()
+
+init()
+def testEachModel(model):
+    reward_values = []
+    totalReward = 0
+    if(model == "model1"):
+        model1 = keras.models.load_model("Snake.keras")
+        for episode in range(5):
+            reset()
+            while not dead:
+                state = get_state()
+                prediction = model1.predict(state.reshape(1,-1), verbose=0)
+                action = np.argmax(prediction)
+                reward = move(action)
+                totalReward += reward
+                render()
+            reward_values.append(totalReward)
+              
+    elif(model == "model2"):
+        model2 = keras.models.load_model("Snake2.keras")
+        for episode in range(5):
+            reset()
+            while not dead:
+                state = get_state()
+                prediction = model2.predict(state.reshape(1,-1), verbose=0)
+                action = np.argmax(prediction)
+                reward = move(action)
+                totalReward += reward
+                render()
+            reward_values.append(totalReward)
+
+    return reward_values
+
+
+
+def ShowEachGraph(modelName):
+    rewardValues1 = testEachModel(modelName)
+    plt.figure(figsize=(8, 4))
+    plt.plot(rewardValues1, marker='o', linestyle='-', color='skyblue')
+    plt.title('Reward pro Episode (Model 1)')
+    plt.xlabel('Episode')
+    plt.ylabel('Reward')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    plt.show()
+
+ShowEachGraph("model1")
+
+
+
