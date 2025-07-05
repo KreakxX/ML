@@ -280,6 +280,7 @@ def testEachModel(model):
     if(model == "model1"):
         model1 = keras.models.load_model("Snake.keras")
         for episode in range(5):
+            totalReward = 0
             reset()
             while not dead:
                 state = get_state()
@@ -293,6 +294,7 @@ def testEachModel(model):
     elif(model == "model2"):
         model2 = keras.models.load_model("Snake2.keras")
         for episode in range(5):
+            totalReward = 0
             reset()
             while not dead:
                 state = get_state()
@@ -318,7 +320,7 @@ def ShowEachGraph(modelName):
     plt.tight_layout()
     plt.show()
 
-ShowEachGraph("model1")
+ShowEachGraph("model2")
 
 
 
