@@ -3,11 +3,11 @@ import math
 import random
 import keras
 import numpy as np
-from keras import  Model, layers
+from keras import Model, layers
 import pygame
 import random
-
 import matplotlib.pyplot as plt
+from collections import deque
 
 # Pygame initialisieren
 pygame.init()
@@ -27,14 +27,15 @@ YELLOW = (255, 255, 0)
 GRAY = (128, 128, 128)
 DARK_GRAY = (64, 64, 64)
 
+memory = deque(maxlen=2000)  
+batch_size = 32            
+train_counter = 0  
+
 # Auto-Variablen
 car_x = SCREEN_WIDTH // 2
 car_y = SCREEN_HEIGHT // 2 + 200
 car_angle = 0
-car_speed = 0
-car_max_speed = 5
-car_acceleration = 0.2
-car_friction = 0.1
+car_speed = 4 # Konstante Geschwindigkeit
 car_turn_speed = 3
 car_width = 20
 car_height = 10
@@ -42,11 +43,10 @@ car_alive = True
 car_distance_traveled = 0
 car_last_x = car_x
 car_last_y = car_y
-car_checkpoints_passed = 0
 car_reward = 0
-epsilon = 1.0        # Anfangs hohe Zufallsrate (100 % Zufall)
-min_epsilon = 0.05   # Minimal erlaubte Zufallsrate (5 % Zufall)
-decay_rate = 0.9995  # Langsamerer Decay
+epsilon = 0.9 
+min_epsilon = 0.05 
+decay_rate = 0.9995
 
 outer_points = []
 inner_points = []
@@ -54,87 +54,129 @@ action_index = 0
 
 # Reset-Timer
 reset_timer = 0
-reset_delay = 120  
+reset_delay = 3
 
+# Neural Network für nur 3 Aktionen: links, geradeaus, rechts
 model = keras.Sequential([              
-    keras.Input(shape=(9,)),
-    layers.Dense(64, activation="relu"),
+    keras.Input(shape=(10,)),
     layers.Dense(64, activation="relu"),
     layers.Dense(32, activation="relu"),
-    layers.Dense(4, activation="linear")
+    layers.Dense(16, activation="relu"),
+    layers.Dense(3, activation="linear")  # 3 Aktionen: links, geradeaus, rechts
 ])
 
-
 model.compile(optimizer='adam', loss='mse')
-state = [
-    car_x,           
-    car_y,             
-    car_angle,       
-    car_speed,       
-    car_reward,      
-    car_alive       
-]
 
-def normalize_state(state):
-    """Normalisiert die Zustandswerte für besseres neuronales Netzwerk-Training"""
-    normalized = np.array(state, dtype=np.float32)
+
+# Replay Buffer
+
+def remember(state, action, reward, next_state, done):
+    memory.append((state, action, reward, next_state, done))
+
+def replay_experience():
+    if len(memory) < batch_size:
+        return  # Noch nicht genug Erfahrungen
     
-    normalized[0] = (normalized[0] - SCREEN_WIDTH/2) / (SCREEN_WIDTH/2)   # car_x
-    normalized[1] = (normalized[1] - SCREEN_HEIGHT/2) / (SCREEN_HEIGHT/2) # car_y
+    # Zufällige Auswahl von Erfahrungen
+    batch = random.sample(memory, batch_size)
     
-    normalized[2] = (normalized[2] % 360) / 180.0 - 1.0  # car_angle
+    # Daten aufteilen
+    states = np.array([e[0] for e in batch])
+    actions = np.array([e[1] for e in batch])
+    rewards = np.array([e[2] for e in batch])
+    next_states = np.array([e[3] for e in batch])
+    dones = np.array([e[4] for e in batch])
     
-    normalized[3] = normalized[3] / car_max_speed  # car_speed
+    # Q-Werte berechnen
+    current_q_values = model.predict(states, verbose=0)
+    next_q_values = model.predict(next_states, verbose=0)
     
+    # Ziel-Q-Werte aktualisieren
+    for i in range(batch_size):
+        if dones[i]:  # Spiel beendet (Crash)
+            current_q_values[i][actions[i]] = rewards[i]
+        else:  # Spiel läuft weiter
+            current_q_values[i][actions[i]] = rewards[i] + 0.95 * np.max(next_q_values[i])
     
-    return normalized
+    # Netzwerk trainieren
+    model.fit(states, current_q_values, epochs=1, verbose=0)
 
-def train_q_state_learning(state, action, reward, next_state, alpha=0.1, gamma=0.9):
-    # Zustand normalisieren vor dem Training
-    normalized_state = normalize_state(state)
-    normalized_next_state = normalize_state(next_state)
+# def train_q_state_learning(state, action, reward, next_state, alpha=0.01, gamma=0.95):    
+#     state = np.array(state).reshape(1, -1)
+#     next_state = np.array(next_state).reshape(1, -1)
+
+#     q_values = model.predict(state, verbose=0)
+#     next_q_values = model.predict(next_state, verbose=0)
+
+#     target = q_values.copy()
+#     target[0][action] = reward + gamma * np.max(next_q_values)
+#     model.fit(state, target, epochs=1, verbose=0)
+
+def cast_ray(x, y, angle_deg, max_length=300):
+    rad = math.radians(angle_deg)
+    for dist in range(0, max_length, 5):
+        check_x = x + math.cos(rad) * dist
+        check_y = y + math.sin(rad) * dist
+        if not point_on_track((check_x, check_y), outer_points + inner_points):
+            return dist
+    return max_length
+
+def calculate_reward():
+    # Bewegungsbelohnung
+    dx = car_x - car_last_x
+    dy = car_y - car_last_y
+    distance_moved = math.sqrt(dx*dx + dy*dy)
+    movement_reward = distance_moved * 0.5
     
-    normalized_state = normalized_state.reshape(1, -1)
-    normalized_next_state = normalized_next_state.reshape(1, -1)
-
-    q_values = model.predict(normalized_state, verbose=0)
-    next_q_values = model.predict(normalized_next_state, verbose=0)
-
-    target = q_values.copy()
-    target[0][action] = reward + gamma * np.max(next_q_values)
-    model.fit(normalized_state, target, epochs=1, verbose=0)
-
-def danger_ahead():
-    forward_distance = 50
-    back_distance = 50
-    front_x = car_x + math.cos(math.radians(car_angle)) * forward_distance
-    front_y = car_y + math.sin(math.radians(car_angle)) * forward_distance
-    back_x = car_x - math.cos(math.radians(car_angle)) * back_distance
-    back_y = car_y - math.sin(math.radians(car_angle)) * back_distance
-    front_off_track = not point_on_track((front_x, front_y), outer_points + inner_points)
-    back_off_track = not point_on_track((back_x, back_y), outer_points + inner_points)
-
-    return front_off_track, back_off_track
-
-
+    # Sensor-basierte Belohnung
+    front, back, left, right = getDistancesFromCar()
     
+    # Belohnung für Balance zwischen links und rechts
+    if left + right > 0:
+        balance_reward = 1.0 - abs(left - right) / (left + right)
+    else:
+        balance_reward = 0
+    
+    # Belohnung für Vorwärtsfahrt
+    forward_reward = min(front / 100.0, 1.0)
+    
+    total_reward = movement_reward + balance_reward * 0.5 + forward_reward * 0.3
+    return total_reward
+
+def getDistancesFromCar():
+    angles = {
+        "front": car_angle,
+        "back": (car_angle + 180) % 360,
+        "left": (car_angle - 90) % 360,
+        "right": (car_angle + 90) % 360,
+    }
+    
+    distance_front = cast_ray(car_x, car_y, angles["front"])
+    distance_back = cast_ray(car_x, car_y, angles["back"])          
+    distance_left = cast_ray(car_x, car_y, angles["left"])
+    distance_right = cast_ray(car_x, car_y, angles["right"])
+    
+    return distance_front, distance_back, distance_left, distance_right
+
 def getStates():
-    global outer_points, inner_points, car_reward
-    point= [car_x,car_y]                                            # more states #
-    danger_nextMove = point_on_track(point, outer_points + inner_points)
-    danger_front, danger_back = danger_ahead()
-
+    global outer_points, inner_points                   
+    
+    point = [car_x, car_y]
+    danger_nextMove = not point_on_track(point, outer_points + inner_points)
+    distance_left, distance_right, distance_front, distance_back = getDistancesFromCar()
+    max_distance = math.sqrt(SCREEN_WIDTH*SCREEN_WIDTH + SCREEN_HEIGHT*SCREEN_HEIGHT)
     state = [
-        car_x,           
-        car_y,             
-        car_angle,       
-        car_speed,       
-        car_alive,
-        int(car_alive),
-        int(danger_nextMove),
-        int(danger_front),
-        int(danger_back)
-    ]
+            (car_x - SCREEN_WIDTH/2) / (SCREEN_WIDTH/2),       
+            (car_y - SCREEN_HEIGHT/2) / (SCREEN_HEIGHT/2),     
+            (car_angle % 360) / 180.0 - 1.0,                    
+            car_speed / 5.0,                     
+            int(car_alive),                                     
+            int(danger_nextMove),                                 
+            distance_front / max_distance,                      
+            distance_back / max_distance,                           
+            distance_left / max_distance,                                
+            distance_right / max_distance 
+        ]
     return np.array(state)
 
 def generate_track():
@@ -153,80 +195,56 @@ def generate_track():
             radius = 220
             
         x = center_x + math.cos(angle) * radius
-        y = center_y + math.sin(angle) * radius * 0.7  # Oval-Form
+        y = center_y + math.sin(angle) * radius * 0.7
         points.append((x, y))
     
     return points
 
-# Checkpoints generieren
-def generate_checkpoints(track_points):
-    checkpoints = []
-    for i in range(0, len(track_points), len(track_points) // 8):
-        checkpoints.append(track_points[i])
-    return checkpoints
-
-# Auto-Funktionen
 def update_car(action):
-    global car_x, car_y, car_angle, car_speed, car_last_x, car_last_y, car_distance_traveled, car_alive, car_reward
+    global car_x, car_y, car_angle, car_last_x, car_last_y, car_distance_traveled, car_alive, car_reward
     
     if not car_alive:
         return
     
-    # Beschleunigung/Bremsen
-    if action[0]:  # Beschleunigen
-        car_speed = min(car_speed + car_acceleration, car_max_speed)
-    elif action[1]:  # Bremsen
-        car_speed = max(car_speed - car_acceleration * 2, -car_max_speed * 0.5)
-    else:
-        # Reibung anwenden
-        if car_speed > 0:
-            car_speed = max(car_speed - car_friction, 0)
-        elif car_speed < 0:
-            car_speed = min(car_speed + car_friction, 0)
+    # Nur Lenkung:
+    # action 0: links lenken
+    # action 1: geradeaus fahren
+    # action 2: rechts lenken
     
-    # Lenken (nur wenn sich das Auto bewegt)
-    if abs(car_speed) > 0.1:
-        if action[2]:  # Links
-            car_angle -= car_turn_speed
-        if action[3]:  # Rechts
-            car_angle += car_turn_speed
+    if action == 0:  # Links lenken
+        car_angle -= car_turn_speed
+    elif action == 2:  # Rechts lenken
+        car_angle += car_turn_speed
+    # action == 1: geradeaus (nichts tun)
     
-    # Position aktualisieren
-    ontrack = point_on_track([car_x, car_y],outer_points + inner_points)
-
-    if ontrack:
-        car_reward += 20
-    else:
-        car_reward -= 10
-
-    # only when moving on track than give reward
-
-
-
     car_last_x = car_x
     car_last_y = car_y
     
+    # Auto fährt immer mit konstanter Geschwindigkeit vorwärts
     car_x += math.cos(math.radians(car_angle)) * car_speed
     car_y += math.sin(math.radians(car_angle)) * car_speed
     
-    # Distanz berechnen
     dx = car_x - car_last_x
     dy = car_y - car_last_y
-    car_distance_traveled += math.sqrt(dx*dx + dy*dy)
+    distance_this_frame = math.sqrt(dx*dx + dy*dy)
+    car_distance_traveled += distance_this_frame
+    
+    # Grundbelohnung für Bewegung
+    car_reward += distance_this_frame * 0.1
+
+    return car_distance_traveled
 
 def get_car_corners():
     cos_angle = math.cos(math.radians(car_angle))
     sin_angle = math.sin(math.radians(car_angle))
     
-    # Relative Positionen der Ecken
     corners = [
         (-car_width/2, -car_height/2),
         (car_width/2, -car_height/2),
         (car_width/2, car_height/2),
         (-car_width/2, car_height/2)
     ]
-    
-    # Rotieren und positionieren
+
     rotated_corners = []
     for corner_x, corner_y in corners:
         rotated_x = corner_x * cos_angle - corner_y * sin_angle
@@ -234,14 +252,6 @@ def get_car_corners():
         rotated_corners.append((car_x + rotated_x, car_y + rotated_y))
     
     return rotated_corners
-def distance_to_next_checkpoint(checkpoints):
-    if len(checkpoints) == 0:
-        return float('inf')
-    
-    current_checkpoint = checkpoints[car_checkpoints_passed % len(checkpoints)]
-    dx = car_x - current_checkpoint[0]
-    dy = car_y - current_checkpoint[1]
-    return math.sqrt(dx * dx + dy * dy)
 
 def draw_car(screen):
     if not car_alive:
@@ -255,18 +265,15 @@ def draw_car(screen):
     front_y = car_y + math.sin(math.radians(car_angle)) * car_width/2
     pygame.draw.circle(screen, YELLOW, (int(front_x), int(front_y)), 3)
 
-# Strecken-Funktionen
 def draw_track(screen, track_points):
     global outer_points, inner_points
-    track_width = 80
-    # Äußere Begrenzung
+    track_width = 40
     outer_points = []
     inner_points = []
     
     for i, point in enumerate(track_points):
         next_point = track_points[(i + 1) % len(track_points)]
         
-        # Normale zur Strecke berechnen
         dx = next_point[0] - point[0]
         dy = next_point[1] - point[1]
         length = math.sqrt(dx*dx + dy*dy)
@@ -283,20 +290,14 @@ def draw_track(screen, track_points):
             outer_points.append((outer_x, outer_y))
             inner_points.append((inner_x, inner_y))
     
-    # Strecke zeichnen
     pygame.draw.polygon(screen, GRAY, outer_points)
     pygame.draw.polygon(screen, DARK_GRAY, inner_points)
     
-    # Mittellinie
-    pygame.draw.lines(screen, WHITE, True, track_points, 2)
-
-def draw_checkpoints(screen, checkpoints):
-    for checkpoint in checkpoints:
-        pygame.draw.circle(screen, GREEN, (int(checkpoint[0]), int(checkpoint[1])), 5)
+    pygame.draw.lines(screen, WHITE, True, track_points, 40)
 
 def point_on_track(point, track_points):
     x, y = point
-    track_width = 80
+    track_width = 40
     
     min_distance = float('inf')
     for track_point in track_points:
@@ -307,105 +308,53 @@ def point_on_track(point, track_points):
     
     return min_distance <= track_width/2
 
-def check_collision(track_points,current_action,state):
+def check_collision(track_points, current_action, state):
     global car_alive, car_reward, reset_timer
 
-    
     car_corners = get_car_corners()
     
     for corner in car_corners:
         if not point_on_track(corner, track_points):
             car_alive = False
-            car_reward -= 50  # Strafe für Kollision
-            reset_timer = reset_delay  # Timer für automatisches Reset starten
-            next_state = getStates()
-            train_q_state_learning(state, current_action, car_reward, next_state)
+            car_reward = -50  # Feste Strafe für Crash
+            reset_timer = reset_delay
             return True
     return False
 
-def check_checkpoint(checkpoints):
-    global car_checkpoints_passed, car_reward
-    
-    if len(checkpoints) == 0:
-        return False
-    
-    current_checkpoint = checkpoints[car_checkpoints_passed % len(checkpoints)]
-    dx = car_x - current_checkpoint[0]
-    dy = car_y - current_checkpoint[1]
-    distance = math.sqrt(dx*dx + dy*dy)
-    
-    if distance < 30:  # Checkpoint-Radius
-        car_checkpoints_passed += 1
-        car_reward += 100  # Belohnung für Checkpoint
-        return True
-    return False
-
 def reset_game():
-    global car_x, car_y, car_angle, car_speed, car_alive, car_distance_traveled
-    global car_last_x, car_last_y, car_checkpoints_passed, car_reward, reset_timer
+    global car_x, car_y, car_angle, car_alive, car_distance_traveled
+    global car_last_x, car_last_y, car_reward, reset_timer
     
-    car_x = SCREEN_WIDTH // 2
-    car_y = SCREEN_HEIGHT // 2 + 200
-    car_angle = 0
-    car_speed = 0
+    track_points = generate_track()
+    spawn_point = track_points[0]   
+    car_x = spawn_point[0]
+    car_y = spawn_point[1]
+    
+    if len(track_points) > 1:
+        next_point = track_points[1]
+        dx = next_point[0] - car_x
+        dy = next_point[1] - car_y
+        car_angle = math.degrees(math.atan2(dy, dx))
+    else:
+        car_angle = 0
+
     car_alive = True
     car_distance_traveled = 0
     car_last_x = car_x
     car_last_y = car_y
-    car_checkpoints_passed = 0
     car_reward = 0
     reset_timer = 0
 
-def draw_ui(screen, font, current_action):
-    global reset_timer
-    
-    # Geschwindigkeit
-    speed_text = font.render(f"Geschwindigkeit: {car_speed:.1f}", True, WHITE)
-    screen.blit(speed_text, (10, 10))
-    
-    # Checkpoints
-    checkpoint_text = font.render(f"Checkpoints: {car_checkpoints_passed}", True, WHITE)
-    screen.blit(checkpoint_text, (10, 50))
-    
-    # Reward
-    reward_text = font.render(f"Reward: {car_reward}", True, WHITE)
-    screen.blit(reward_text, (10, 90))
-    
-    # Status
-    status = "Lebendig" if car_alive else "Kollision!"
-    status_color = GREEN if car_alive else RED
-    status_text = font.render(f"Status: {status}", True, status_color)
-    screen.blit(status_text, (10, 130))
-    
-    # Auto-Reset Timer anzeigen
-    if reset_timer > 0:
-        countdown = (reset_timer / 60.0)  # Sekunden
-        reset_text = font.render(f"Neustart in: {countdown:.1f}s", True, YELLOW)
-        screen.blit(reset_text, (10, 170))
-    
-    # Steuerung
-    control_text = font.render("Steuerung: WASD oder Pfeiltasten | R = Manueller Reset", True, WHITE)
-    screen.blit(control_text, (10, SCREEN_HEIGHT - 40))
-    
-    # Aktuelle Aktion anzeigen
-    action_names = ["Beschleunigen", "Bremsen", "Links", "Rechts"]
-    active_actions = [action_names[i] for i, active in enumerate(current_action) if active]
-    action_text = f"Aktionen: {', '.join(active_actions) if active_actions else 'Keine'}"
-    action_display = font.render(action_text, True, YELLOW)
-    screen.blit(action_display, (10, 210))
-
 def main():
-    global car_reward, reset_timer,epsilon, action_index
+    global car_reward, reset_timer, epsilon, action_index,train_counter
     
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("2D Auto Rennspiel - Auto Reset")
+    pygame.display.set_caption("2D Auto Rennspiel - Nur Lenkung lernen")
     clock = pygame.time.Clock()
-    font = pygame.font.Font(None, 36)
     
     track_points = generate_track()
-    checkpoints = generate_checkpoints(track_points)
     
-    current_action = [0, 0, 0, 0] 
+    reset_game()
     
     running = True
     while running:
@@ -422,35 +371,49 @@ def main():
                 reset_game()
         
         if car_alive:
-            current_action = [0, 0, 0, 0]
             state = getStates()
-            old_distance = distance_to_next_checkpoint(checkpoints)
+
+            # Entscheidung: Zufällig oder KI-gesteuert
             if random.random() < epsilon:  
-                current_action = [0, 0, 0, 0]
-                action_index = random.randint(0, 3)
-                current_action[action_index] = 1
+                action_index = random.randint(0, 2)  # 0=links, 1=geradeaus, 2=rechts
             else:
                 raw_action = model.predict(state.reshape(1, -1), verbose=0)[0]
                 action_index = np.argmax(raw_action)
-                current_action[action_index] = 1
-            update_car(current_action)
-            check_collision(track_points,current_action,state)
-            next_state = getStates()
-            check_checkpoint(checkpoints)
-             
-            new_distance = distance_to_next_checkpoint(checkpoints)
-            delta_distance = old_distance - new_distance
-            car_reward += delta_distance * 2
-            train_q_state_learning(state,action_index,car_reward,next_state)
-            
-        else:
-            epsilon = max(min_epsilon, epsilon * decay_rate)
 
+            # Auto updaten
+            update_car(action_index)
+            
+            sensor_reward = calculate_reward()
+            car_reward += sensor_reward
+
+            # Kollision prüfen
+            next_state = getStates()
+            crashed = check_collision(track_points, action_index, state)
+
+            if crashed:
+                # Crash-Erfahrung speichern
+                remember(state, action_index, car_reward, next_state, True)
+            else:
+                # Normale Erfahrung speichern
+                remember(state, action_index, car_reward, next_state, False)
+
+            train_counter += 1
+            if train_counter % 4 == 0 and len(memory) > batch_size:
+                replay_experience()
+
+            car_reward = 0  
+                        
+        epsilon = max(min_epsilon, epsilon * decay_rate)
+
+        # Zeichnen
         screen.fill(BLACK)
         draw_track(screen, track_points)
-        draw_checkpoints(screen, checkpoints)
         draw_car(screen)
-        draw_ui(screen, font, current_action)
+        
+        # Debug-Info
+        font = pygame.font.Font(None, 36)
+        epsilon_text = font.render(f"Epsilon: {epsilon:.3f}", True, WHITE)
+        screen.blit(epsilon_text, (10, 10))
         
         pygame.display.flip()
         clock.tick(FPS)
