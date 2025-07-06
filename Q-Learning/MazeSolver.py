@@ -19,7 +19,7 @@ def remember(state, action, reward, next_state, done):
     memory.append((state, action, reward, next_state, done))
 
 
-  # same as normal QLearning but is better because is learning with large Data = so the model get better context etc.
+# same as normal QLearning but is better because is learning with large Data = so the model get better context etc.
 def replay_experience():
     if len(memory) < batch_size:
         return  
