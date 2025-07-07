@@ -13,8 +13,6 @@ import matplotlib.pyplot as plt
 # Position vom Essen
 
 
-
-
 # model = keras.Sequential([              
 #     keras.Input(shape=(11,)),
 #     layers.Dense(128, activation="relu"),

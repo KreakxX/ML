@@ -14,11 +14,12 @@ train_text = train_data.map(lambda text, label: text)
 tokenizer.adapt(train_text) 
 
 
-# Model no recurrent Network its just a basic nn
-model= keras.Sequential([
+# RNN Recurrent Neural network because of LSTM layer and Embedding
+model= keras.Sequential([   
   layers.Embedding(input_dim=10000, output_dim=16, input_length=100), 
-  layers.GlobalAveragePooling1D(),
-  layers.Dense(32,activation="relu"), 
+  # layers.GlobalAveragePooling1D(),   only if not using LSTM because LSTM long short Term memory needs the oder and Pooling removes and takes average values
+  layers.LSTM(64,dropout=0.2, recurrent_dropout=0.2),    # 64 neurons and dropout for preventing overfitting
+  # layers.Dense(32,activation="relu"),  not directly neccessary if using LSTM 
   layers.Dense(32,activation="relu"),      # if input is negative returning 0 => not for linear connection -> better learning for complex connections
   layers.Dense(1,activation="sigmoid")   # Binary only 0 or 1 
 ])
@@ -44,7 +45,6 @@ early_stopping = EarlyStopping(
 )
 #Training
 model.fit(train_ds, validation_data=test_ds, epochs=30, callbacks=[early_stopping])
-
 
 # Evaluation
 test_loss, test_acc = model.evaluate(test_ds)

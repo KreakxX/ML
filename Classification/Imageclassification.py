@@ -22,7 +22,6 @@ model = keras.Sequential(
 model.compile(optimizer="adam",loss="sparse_categorical_crossentropy", metrics=["accuracy"] ) # compile
 
 # load Dataset 
-
 (train_ds, test_ds), info = tfds.load(
     'cats_vs_dogs',
     split=['train[:80%]', 'train[80%:]'],
@@ -52,19 +51,19 @@ test_ds = test_ds.map(dataAugmentaion,num_parallel_calls=tf.data.AUTOTUNE)
 test_ds = test_ds.batch(32).prefetch(tf.data.AUTOTUNE)
 
 
-early_stopping = keras.callbacks.EarlyStopping(
-    monitor='val_loss',                             # early stopping to prevent overfitting
-    patience=4,              
-    restore_best_weights=True  
-)
+# early_stopping = keras.callbacks.EarlyStopping(
+#     monitor='val_loss',                             # early stopping to prevent overfitting
+#     patience=4,              
+#     restore_best_weights=True  
+# )
 
-model.fit(
-    train_ds,
-    validation_data=test_ds,
-    epochs=60,                       #training
-    callbacks=early_stopping
-)
-model.save("Cat_Dog_Classifier3.keras")
+# model.fit(
+#     train_ds,
+#     validation_data=test_ds,
+#     epochs=60,                       #training
+#     callbacks=early_stopping
+# )
+# model.save("Cat_Dog_Classifier3.keras")
 
 
 def CheckModelPerformance(modelName, ingputImg):
