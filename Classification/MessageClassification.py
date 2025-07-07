@@ -14,7 +14,7 @@ train_text = train_data.map(lambda text, label: text)
 tokenizer.adapt(train_text) 
 
 
-# Model
+# Model no recurrent Network its just a basic nn
 model= keras.Sequential([
   layers.Embedding(input_dim=10000, output_dim=16, input_length=100), 
   layers.GlobalAveragePooling1D(),
