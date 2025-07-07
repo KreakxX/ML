@@ -26,7 +26,7 @@ sp500["Volume"]      # volume today
 sp500["Daily Change"] = sp500["Close"] - sp500["Open"]    # how the Close minuse the Open is Changed the diffences 
 sp500["Return 1d"] = sp500["Close"].pct_change()    # rendite    # new cols etc 
 
-sp500 = sp500.dropna()     # drop all 
+sp500 = sp500.dropna()     # drop all NaN values
 sp500 = sp500.drop_duplicates() # drop all duplicate
 
 up = sp500[sp500["Target"] == 1]  # get all the up values
