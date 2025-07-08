@@ -7,7 +7,7 @@ import tensorflow_datasets as tfds
 import numpy as np
 
 
-# CNN Convulational Neural Network
+# CNN Convulational Neural Network for image
 model = keras.Sequential(
   [layers.Conv2D(32, (3,3), activation='relu', input_shape=(128,128,3)),   # 32 filters like finding shapes and corners that,  3,3 is for the size like a 3x3 pixel square  if smaller = feiner
     layers.MaxPooling2D(2,2), # makes the image size / 2 -> performance optimization 64x64  takes out of each 2x2 sqaure the max value so the sizes geht divided by 2
