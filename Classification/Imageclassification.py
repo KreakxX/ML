@@ -69,7 +69,7 @@ test_ds = test_ds.batch(32).prefetch(tf.data.AUTOTUNE)
 def CheckModelPerformance(modelName, ingputImg):
     global classnames
     model = keras.models.load_model(modelName)
-    img = tf.keras.utils.load_img(ingputImg, target_size=(128, 128))  # load image with the target size
+    img = tf.keras.utils.load_img(ingputImg, target_size=(256, 256))  # load image with the target size
     img_array = tf.keras.utils.img_to_array(img)  # loading into numpy array because is neccessary for the model
     img_array = img_array/255.0          # normalization value between 0 and 1
     img_array = np.expand_dims(img_array,axis=0)          # add batch dimension with numpy
