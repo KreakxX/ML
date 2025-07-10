@@ -66,8 +66,8 @@ def parse_annotation(xml_file):
         
         center_x = (xmin + xmax) / 2
         center_y = (ymin + ymax) / 2
-        width = (xmax - xmin) 
-        height = (ymax - ymin)           # implement resizing if not working properly
+        width = (xmax - xmin) * 0.6
+        height = (ymax - ymin) * 1.2           # implement resizing if not working properly
         
         new_xmin = center_x - width / 2
         new_ymin = center_y - height / 2
@@ -137,17 +137,16 @@ def load_data(percentage=0.6):
     print(f"Successfully loaded {len(X)} images")
     return np.array(X, dtype=np.float32), np.array(y, dtype=np.float32)
 
-X,Y = load_data()
+# X,Y = load_data()
 
-earlyStopping = keras.callbacks.EarlyStopping(
-    monitor="val_loss",
-    patience=10,
-    restore_best_weights = True
-)
+# earlyStopping = keras.callbacks.EarlyStopping(
+#     monitor="val_loss",
+#     patience=10,
+#     restore_best_weights = True
+# )
 
-multipleBoundingBoxesModel.fit(X,Y,epochs=70, validation_split=0.2, callbacks=[earlyStopping])
-multipleBoundingBoxesModel.save("Multiple_Bounding_Boxes_Model.keras")
-
+# multipleBoundingBoxesModel.fit(X,Y,epochs=70, validation_split=0.2, callbacks=[earlyStopping])
+# multipleBoundingBoxesModel.save("Multiple_Bounding_Boxes_Model.keras")
 
 def denormalize_box(box, orig_size, target_size=(256, 256)):
     ow, oh = orig_size  
@@ -234,5 +233,5 @@ def testMultiObjectDetection(img_path):
     plt.show()
 
 
-# testMultiObjectDetection("Hund_katze2.png")
+testMultiObjectDetection("Hund_katze2.jpeg")
 
