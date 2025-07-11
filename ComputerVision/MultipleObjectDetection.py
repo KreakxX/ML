@@ -20,31 +20,18 @@ voc_dataset = datasets.VOCDetection(
 input_shape = (256, 256, 3)
 
 multipleBoundingBoxesModel = keras.Sequential([
-    layers.Input(shape=input_shape),             # Input layer takes images 256x 256 with np dimensions
-    layers.Conv2D(64, 3, activation="relu", padding="same"),            
-    layers.Conv2D(64, 3, activation="relu", padding="same"),         # first convolutional layer with 64 filters each 3 
-    layers.MaxPooling2D(),                  # pooling for performance
-    layers.Dropout(0.2),                    # dropout for preventing overfitting
-    
-    layers.Conv2D(128, 3, activation="relu", padding="same"),
-    layers.Conv2D(128, 3, activation="relu", padding="same"),        # second convolutional layer with 128 filers each 3
-    layers.MaxPooling2D(),                  # pooling for performance
-    layers.Dropout(0.2),                    # dropout for preventing overfitting
-    
-    layers.Conv2D(256, 3, activation="relu", padding="same"),          
-    layers.Conv2D(256, 3, activation="relu", padding="same"),       # third convolutional layer with 256 filters each 3
-    layers.MaxPooling2D(),                  # pooling for performance
-    layers.Dropout(0.2),                    # dropout for preventing overfitting
-
-    layers.Conv2D(512, 3, activation="relu", padding="same"),       # fourth convolutional layer with 512 filters each 3
-    layers.Conv2D(512, 3, activation="relu", padding="same"),
-    layers.GlobalAveragePooling2D(),        # pooling for performance
-    
-    layers.Dense(512, activation="relu"),                           # Neuron layer with 512 Neurons
-    layers.Dropout(0.4),                    # dropout for preventing overfitting
-    layers.Dense(256, activation="relu"),                           # Neuron layer with 256 Neurons
-    layers.Dropout(0.3),                    # dropout for preventing overfitting
-    layers.Dense(10, activation="linear")                           # Output layer
+    layers.Input(shape=input_shape),
+    layers.Conv2D(64, 3, activation="relu"),
+    layers.MaxPooling2D(),
+    layers.Conv2D(128, 3, activation="relu"),
+    layers.MaxPooling2D(),
+    layers.Conv2D(256, 3, activation="relu"),
+    layers.MaxPooling2D(),
+    layers.Conv2D(512, 3, activation="relu"),
+    layers.GlobalAveragePooling2D(),
+    layers.Dense(256, activation="relu"),
+    layers.Dropout(0.3),
+    layers.Dense(10, activation="linear")  
 ])
 
 TARGET_SIZE = (256, 256)
@@ -84,7 +71,7 @@ def parse_annotation(xml_file):
         
         center_x = (xmin + xmax) / 2            # and center_x, center_y aswell as the width
         center_y = (ymin + ymax) / 2
-        width = (xmax - xmin)
+        width = (xmax - xmin) * 0.5
         height = (ymax - ymin)          # implement resizing if not working properly
         
         new_xmin = center_x - width / 2
@@ -118,7 +105,7 @@ def parse_annotation(xml_file):
     return filename, flattened_boxes, labels
 
 # loading Data 80 % of the Dataset
-def load_data(percentage=0.8):  
+def load_data(percentage=0.6):  
     global img_dir, xml
     X = []
     y = []
@@ -134,7 +121,7 @@ def load_data(percentage=0.8):
         if i % 1000 == 0:                   
             print(f"Processed {i}/{num_files} files")
             
-        full_xml = os.path.join(xml, xml_file)       # loop trhoguh and apply parsing of the boxes
+        full_xml = os.path.join(xml, xml_file)       # loop trhoguh and apply parsing of the boxer
         try:
             result  = parse_annotation(full_xml)
             if result is None:              # continue if there arent enough boxes
@@ -163,7 +150,7 @@ X,Y = load_data()
 # earlystopping for preventing overfitting in this case not really optimized
 earlyStopping = keras.callbacks.EarlyStopping(
     monitor="val_loss",
-    patience=10,
+    patience=4,
     restore_best_weights = True
 )
 
@@ -263,7 +250,7 @@ def testMultiObjectDetection(img_path):
     plt.show()
 
 
-# testMultiObjectDetection("Hund_katze2.jpeg")
+testMultiObjectDetection("Dog_Cat.png")
 
 
 # Summary
@@ -274,3 +261,4 @@ def testMultiObjectDetection(img_path):
 # - Data preparation, more data esspecially with images and multiple boxes
 # - filtering boxes by x_center in this case helped with the second box
 # - more learning and micro adjustments like training model with resized boxes for better understanding
+# - A specific Dataset for Cats and Dogs with bounding boxes (would increase model performacne by 100 %)
