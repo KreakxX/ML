@@ -48,10 +48,6 @@ discriminator = keras.Sequential([
         layers.BatchNormalization(),
         layers.LeakyReLU(alpha=0.2),
         
-        layers.Conv2D(1024, 4, strides=2, padding='same'),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-        
         layers.Flatten(),
         layers.Dense(1, activation='sigmoid')
 ])
@@ -75,10 +71,11 @@ celeba = tf.keras.utils.image_dataset_from_directory(
     path,
     labels=None,
     image_size=(64, 64),
-    batch_size=32,
+    batch_size=64,
     shuffle=True
 ).map(preprocessImages)
 
+celeba = celeba.take(1000)
 
 # Model compiling
 generator.compile(
@@ -93,7 +90,7 @@ discriminator.compile(
     metrics=['accuracy']
 )
 
-
+# training loop
 def train_gan(generator, discriminator, dataset, epochs=100, z_dim=100):
     # looping each epoch
     for epoch in range(epochs):
