@@ -2,7 +2,6 @@ import keras
 from keras import layers, models
 import tensorflow as tf
 
-
 # Generator model
 generator = keras.Sequential([
     layers.Input(shape=(100,)),  # z_dim = 100   Random noise vector with 100 values like [0.5,-1,-2,-2.3]
@@ -29,24 +28,27 @@ generator = keras.Sequential([
 # output format of the generator
 input_shape = (64,64,3)
 
-
 # Discriminator model
 discriminator = keras.Sequential([
         layers.Input(shape=input_shape),
         layers.Conv2D(64, 4, strides=2, padding='same'),  # a Convolutional layer with 64 filters with a 4x4 size
-        layers.LeakyReLU(alpha=0.2),      # is there for making the values not null but smaller for example it takes a negative input -2 and than times the alpha value to minimize loss
+        layers.LeakyReLU(alpha=0.1),      # is there for making the values not null but smaller for example it takes a negative input -2 and than times the alpha value to minimize loss
         
         layers.Conv2D(128, 4, strides=2, padding='same'),
         layers.BatchNormalization(), # normalizing the values
-        layers.LeakyReLU(alpha=0.2),
+        layers.LeakyReLU(alpha=0.1),
         
+        layers.Dropout(0.3),            # prevents overfitting
+
         layers.Conv2D(256, 4, strides=2, padding='same'),   # strides makes the difference for the steps, for example =2 makes jumping 2px worth
         layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-        
+        layers.LeakyReLU(alpha=0.1),
+
+        layers.Dropout(0.3),            # prevents overfitting5
+
         layers.Conv2D(512, 4, strides=2, padding='same'), # padding adds zeros, so the output size is right 
         layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
+        layers.LeakyReLU(alpha=0.1),
         
         layers.Flatten(),
         layers.Dense(1, activation='sigmoid')
@@ -85,7 +87,7 @@ generator.compile(
 )
 
 discriminator.compile(
-    optimizer=keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5),
+    optimizer=keras.optimizers.Adam(learning_rate=0.0001, beta_1=0.5),
     loss='binary_crossentropy',
     metrics=['accuracy']
 )
@@ -101,30 +103,32 @@ def train_gan(generator, discriminator, dataset, epochs=100, z_dim=100):
             
             # Training of the discriminator to rate if the image looks real or not real images
             real_images = batch   # and take the images
-            real_labels = tf.ones((batch_size, 1))  
+            real_labels = tf.ones((batch_size, 1))  * 0.9       # label smoothing instead of 1 do 0.9
             
             # generating fake images
             noise = tf.random.normal([batch_size, z_dim])
             fake_images = generator(noise, training=False)
-            fake_labels = tf.zeros((batch_size, 1))
+            fake_labels = tf.zeros((batch_size, 1)) * 0.1 # label smoothing instead of 0 do 0.1
 
             # training the discriminator
             d_loss_real = discriminator.train_on_batch(real_images, real_labels)
             d_loss_fake = discriminator.train_on_batch(fake_images, fake_labels)
-            
 
-            # Training of the generator the generator trys to fool the discriminator
-            noise = tf.random.normal([batch_size, z_dim])
-            misleading_labels = tf.ones((batch_size, 1))
             
-            # freeze the discriminator training when training the generator
-            discriminator.trainable = False
-            
-            # training the generator
-            g_loss = discriminator.train_on_batch(generator(noise), misleading_labels)
-            
-            # and unfreezing after
-            discriminator.trainable = True
+            for _ in range(2): # train the generator more often 2 times per epoch so its getting ahead of the discriminator this is the goal
+                # Training of the generator the generator trys to fool the discriminator
+                noise = tf.random.normal([batch_size, z_dim])
+                misleading_labels = tf.ones((batch_size, 1))
+                
+                # freeze the discriminator training when training the generator
+                discriminator.trainable = False
+                
+                # training the generator
+                g_loss = discriminator.train_on_batch(generator(noise), misleading_labels)
+                
+                # and unfreezing after
+                discriminator.trainable = True
+
         
         print(f"D_loss_real: {d_loss_real[0]:.4f}, D_loss_fake: {d_loss_fake[0]:.4f}, G_loss: {g_loss[0]:.4f}")
 
@@ -135,3 +139,8 @@ train_gan(generator, discriminator, celeba, epochs=20)
 # saving the model
 discriminator.save("models/discriminator")
 generator.save("models/generator")
+
+
+# Problems 
+# -> Discriminator ist too good, so generator doesnt learn anything anymore
+# -> FIX: slower learning rate for the Discriminator and training the generator twice per epoch and reducing leakyReLU
